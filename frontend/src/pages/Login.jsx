@@ -48,7 +48,7 @@ const Login = ({ onLoginSuccess }) => {
             M
           </div>
           <h2 className="text-2xl font-bold text-slate-800">MediCare Pro</h2>
-          <p className="text-sm text-slate-500 mt-1">E-Pharmacy & Hospital Management System</p>
+          <p className="text-sm text-slate-500 mt-1">Pharmacy & Hospital Management System</p>
         </div>
 
         {/* Error Alert */}
@@ -71,7 +71,7 @@ const Login = ({ onLoginSuccess }) => {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
+                placeholder="username"
                 className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 bg-white/70 outline-none text-slate-800 placeholder-slate-400 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 transition-all-300"
               />
             </div>
@@ -105,14 +105,8 @@ const Login = ({ onLoginSuccess }) => {
             )}
           </button>
         </form>
-        
-        {/* Help footer */}
-        <div className="mt-8 text-center text-xs text-slate-400 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
-          <span className="font-semibold text-slate-500 block mb-0.5">Demo Credentials</span>
-          username: <code className="bg-slate-200/80 px-1.5 py-0.5 rounded text-[11px] font-mono text-slate-600">admin</code> &nbsp;|&nbsp; password: <code className="bg-slate-200/80 px-1.5 py-0.5 rounded text-[11px] font-mono text-slate-600">password123</code>
+          </div>
         </div>
-      </div>
-    </div>
   );
 };
 

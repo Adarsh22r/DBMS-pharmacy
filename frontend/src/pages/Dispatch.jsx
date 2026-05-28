@@ -38,7 +38,19 @@ const Dispatch = () => {
     }
   };
 
+  const getAggregatedInventory = () => {
+    const map = {};
+    inventory.forEach(item => {
+      if (!map[item.medicine_id]) {
+        map[item.medicine_id] = { ...item, quantity: 0 };
+      }
+      map[item.medicine_id].quantity += item.quantity;
+    });
+    return Object.values(map);
+  };
+
   const handlePatientSearch = async (e) => {
+
     e.preventDefault();
     if (!patientId.trim()) return;
 
@@ -80,15 +92,24 @@ const Dispatch = () => {
     try {
       // Execute the dispatch. This invokes the SQL Stored Procedure sp_dispatch_medicine
       // inside a database Transaction!
-      await api.post('/dispatch', {
+      const res = await api.post('/dispatch', {
         patient_id: patient.patient_id,
         medicine_id: selectedMedicine,
         quantity: parseInt(quantity, 10)
       });
 
-      setDispatchSuccess('Medicine dispatched successfully! Stock logs updated.');
+      let successMsg = 'Medicine dispatched successfully! Stock logs updated.';
+      if (res.data.batchesConsumed && res.data.batchesConsumed.length > 0) {
+        const batchDetails = res.data.batchesConsumed
+          .map(b => `${b.quantity} from ${b.batch_number} (exp ${new Date(b.expiry_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })})`)
+          .join(' + ');
+        successMsg = `Dispatched ${quantity} units: ${batchDetails}`;
+      }
+
+      setDispatchSuccess(successMsg);
       setSelectedMedicine('');
       setQuantity(1);
+
 
       // Reload inventory, history, and search result to reflect changes
       await fetchInventoryAndHistory();
@@ -194,13 +215,14 @@ const Dispatch = () => {
                       className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white outline-none focus:border-teal-500"
                     >
                       <option value="">-- Choose Medicine --</option>
-                      {inventory.map(m => (
+                      {getAggregatedInventory().map(m => (
                         <option key={m.medicine_id} value={m.medicine_id} disabled={m.quantity === 0}>
                           {m.medicine_name} (Avail: {m.quantity} {m.unit}s) {m.quantity === 0 ? '- OUT OF STOCK' : ''}
                         </option>
                       ))}
                     </select>
                   </div>
+
 
                   {/* Quantity */}
                   <div>

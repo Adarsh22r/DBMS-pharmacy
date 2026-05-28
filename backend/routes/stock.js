@@ -23,7 +23,7 @@ router.get('/', auth, async (req, res) => {
 
 // @route   GET api/stock/low
 // @desc    Get low stock alerts (Calls CURSOR Stored Procedure)
-router.get('/low', auth, async (req, res) => {
+router.get('/low', auth, auth.requireRole('Admin', 'Pharmacist'), async (req, res) => {
   try {
     // Call the cursor-based stored procedure
     const [rows] = await db.query('CALL sp_low_stock_report()');
@@ -36,9 +36,31 @@ router.get('/low', auth, async (req, res) => {
   }
 });
 
+// @route   GET api/stock/expiring
+// @desc    Get stock batches expiring within N days
+router.get('/expiring', auth, auth.requireRole('Admin', 'Pharmacist'), async (req, res) => {
+  const days = req.query.days ? parseInt(req.query.days, 10) : 30;
+  try {
+    const [rows] = await db.query(
+      `SELECT s.stock_id, m.medicine_name, s.batch_number, s.quantity, s.expiry_date
+       FROM stock s
+       JOIN medicines m ON s.medicine_id = m.medicine_id
+       WHERE s.quantity > 0 
+         AND s.expiry_date > CURDATE()
+         AND s.expiry_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
+       ORDER BY s.expiry_date ASC`,
+      [days]
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('Expiring stock query error:', error);
+    res.status(500).json({ message: 'Server error retrieving expiring stock' });
+  }
+});
+
 // @route   POST api/stock/add-medicine
 // @desc    Create a new medicine and initialize its stock
-router.post('/add-medicine', auth, async (req, res) => {
+router.post('/add-medicine', auth, auth.requireRole('Admin', 'Pharmacist'), async (req, res) => {
   const { medicine_name, category, manufacturer, unit_price, unit, batch_number, quantity, expiry_date, reorder_level } = req.body;
 
   if (!medicine_name || !unit_price || !unit || !batch_number || !expiry_date) {
@@ -59,18 +81,19 @@ router.post('/add-medicine', auth, async (req, res) => {
 
     // 2. Insert stock
     const qty = quantity ? parseInt(quantity, 10) : 0;
-    await conn.query(
+    const [stockResult] = await conn.query(
       `INSERT INTO stock (medicine_id, batch_number, quantity, expiry_date, reorder_level)
        VALUES (?, ?, ?, ?, ?)`,
       [medicineId, batch_number, qty, expiry_date, reorder_level || 50]
     );
+    const stockId = stockResult.insertId;
 
     // 3. Log stock in (Audit trail)
     if (qty > 0) {
       await conn.query(
-        `INSERT INTO stock_log (medicine_id, change_type, quantity, reason)
-         VALUES (?, 'IN', ?, 'Initial stock intake')`,
-        [medicineId, qty]
+        `INSERT INTO stock_log (medicine_id, change_type, quantity, reason, batch_stock_id)
+         VALUES (?, 'IN', ?, 'Initial stock intake', ?)`,
+        [medicineId, qty, stockId]
       );
     }
 
@@ -91,55 +114,46 @@ router.post('/add-medicine', auth, async (req, res) => {
 
 // @route   POST api/stock/restock
 // @desc    Restock an existing medicine quantity
-router.post('/restock', auth, async (req, res) => {
+router.post('/restock', auth, auth.requireRole('Admin', 'Pharmacist'), async (req, res) => {
   const { medicine_id, quantity, batch_number, expiry_date } = req.body;
 
-  if (!medicine_id || !quantity || quantity <= 0) {
-    return res.status(400).json({ message: 'Valid medicine ID and quantity are required' });
+  if (!medicine_id || !quantity || quantity <= 0 || !batch_number || !expiry_date) {
+    return res.status(400).json({ message: 'Medicine ID, quantity, batch number, and expiry date are required' });
   }
 
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
 
-    // Check if stock record exists
-    const [stockRows] = await conn.query('SELECT stock_id FROM stock WHERE medicine_id = ?', [medicine_id]);
+    // Check if stock record exists for this medicine and batch_number
+    const [stockRows] = await conn.query(
+      'SELECT stock_id FROM stock WHERE medicine_id = ? AND batch_number = ?',
+      [medicine_id, batch_number]
+    );
     
+    let stockId;
     if (stockRows.length === 0) {
-      // Create new stock row if it didn't exist
-      if (!batch_number || !expiry_date) {
-        throw new Error('Batch number and expiry date are required to initialize stock');
-      }
-      await conn.query(
+      // Create new stock batch row
+      const [insertResult] = await conn.query(
         `INSERT INTO stock (medicine_id, batch_number, quantity, expiry_date, reorder_level)
          VALUES (?, ?, ?, ?, 50)`,
         [medicine_id, batch_number, quantity, expiry_date]
       );
+      stockId = insertResult.insertId;
     } else {
-      // Update existing stock row
-      let updateSql = 'UPDATE stock SET quantity = quantity + ?';
-      const params = [quantity];
-
-      if (batch_number) {
-        updateSql += ', batch_number = ?';
-        params.push(batch_number);
-      }
-      if (expiry_date) {
-        updateSql += ', expiry_date = ?';
-        params.push(expiry_date);
-      }
-      
-      updateSql += ' WHERE medicine_id = ?';
-      params.push(medicine_id);
-
-      await conn.query(updateSql, params);
+      // Update existing stock batch row
+      stockId = stockRows[0].stock_id;
+      await conn.query(
+        'UPDATE stock SET quantity = quantity + ? WHERE stock_id = ?',
+        [quantity, stockId]
+      );
     }
 
-    // Log the action to stock_log
+    // Log the action to stock_log with batch_stock_id
     await conn.query(
-      `INSERT INTO stock_log (medicine_id, change_type, quantity, reason)
-       VALUES (?, 'IN', ?, 'Manual Restock')`,
-      [medicine_id, quantity]
+      `INSERT INTO stock_log (medicine_id, change_type, quantity, reason, batch_stock_id)
+       VALUES (?, 'IN', ?, 'Manual Restock', ?)`,
+      [medicine_id, quantity, stockId]
     );
 
     await conn.commit();
@@ -159,9 +173,10 @@ router.post('/restock', auth, async (req, res) => {
 router.get('/logs', auth, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT l.log_id, m.medicine_name, l.change_type, l.quantity, l.reason, l.log_time
+      `SELECT l.log_id, m.medicine_name, l.change_type, l.quantity, l.reason, l.log_time, s.batch_number
        FROM stock_log l
        JOIN medicines m ON l.medicine_id = m.medicine_id
+       LEFT JOIN stock s ON l.batch_stock_id = s.stock_id
        ORDER BY l.log_time DESC LIMIT 100`
     );
     res.json(rows);
@@ -172,3 +187,4 @@ router.get('/logs', auth, async (req, res) => {
 });
 
 module.exports = router;
+

@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 
 // @route   POST api/dispatch
 // @desc    Dispatch medicine to a patient (Calls TRANSACTION Stored Procedure)
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, auth.requireRole('Admin', 'Pharmacist'), async (req, res) => {
   const { patient_id, medicine_id, quantity } = req.body;
   const staff_id = req.user.staff_id; // Securely fetched from JWT token
 
@@ -23,7 +23,21 @@ router.post('/', auth, async (req, res) => {
       staff_id
     ]);
 
-    res.json({ message: 'Medicine dispatched successfully' });
+    // Fetch the stock_log entries written during this dispatch and return them
+    const [logRows] = await db.query(`
+        SELECT sl.quantity, s.batch_number, s.expiry_date
+        FROM   stock_log sl
+        JOIN   stock s ON s.stock_id = sl.batch_stock_id
+        WHERE  sl.medicine_id = ?
+          AND  sl.change_type = 'OUT'
+          AND  sl.reason = ?
+        ORDER BY sl.log_time DESC
+    `, [medicine_id, `FEFO dispatch | patient=${patient_id}`]);
+
+    res.json({ 
+      message: 'Medicine dispatched successfully',
+      batchesConsumed: logRows
+    });
 
   } catch (error) {
     console.error('Dispatch error:', error.message);
@@ -34,6 +48,41 @@ router.post('/', auth, async (req, res) => {
     }
     
     res.status(500).json({ message: 'Server error during medicine dispatch transaction' });
+  }
+});
+
+// @route   GET api/dispatch/pending
+// @desc    Get prescriptions with items not yet dispatched
+router.get('/pending', auth, auth.requireRole('Admin', 'Pharmacist'), async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+          pr.prescription_id,
+          pr.patient_id,
+          p.full_name AS patient_name,
+          pr.prescribed_on,
+          m.medicine_name,
+          pi.medicine_id,
+          pi.quantity AS prescribed_quantity,
+          COALESCE(
+              (SELECT SUM(d.quantity) 
+               FROM dispatch d 
+               WHERE d.patient_id = pr.patient_id 
+                 AND d.medicine_id = pi.medicine_id
+                 AND d.dispatch_date >= pr.prescribed_on), 
+              0
+          ) AS dispatched_quantity
+      FROM prescriptions pr
+      JOIN patients p ON pr.patient_id = p.patient_id
+      JOIN prescription_items pi ON pr.prescription_id = pi.prescription_id
+      JOIN medicines m ON pi.medicine_id = m.medicine_id
+      HAVING dispatched_quantity < prescribed_quantity
+      ORDER BY pr.prescribed_on DESC
+    `);
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error retrieving pending dispatches' });
   }
 });
 
@@ -58,3 +107,4 @@ router.get('/history', auth, async (req, res) => {
 });
 
 module.exports = router;
+

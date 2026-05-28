@@ -97,8 +97,38 @@ router.get('/:bill_id', auth, async (req, res) => {
       }
     }
 
+    // Get attending doctor details
+    let doctor = { full_name: 'Duty Doctor', specialization: 'General Medicine' };
+    if (bill.patient_type === 'IPD') {
+      const [docRows] = await db.query(
+        `SELECT d.full_name, d.specialization
+         FROM ipd_admissions a
+         JOIN doctors d ON a.attending_doctor = d.doctor_id
+         WHERE a.patient_id = ?
+         ORDER BY a.admission_date DESC LIMIT 1`,
+        [bill.patient_id]
+      );
+      if (docRows.length > 0) {
+        doctor = docRows[0];
+      }
+    } else {
+      const [docRows] = await db.query(
+        `SELECT d.full_name, d.specialization
+         FROM opd_visits v
+         JOIN doctors d ON v.doctor_id = d.doctor_id
+         WHERE v.patient_id = ?
+         ORDER BY v.visit_date DESC LIMIT 1`,
+        [bill.patient_id]
+      );
+      if (docRows.length > 0) {
+        doctor = docRows[0];
+      }
+    }
+    bill.doctor = doctor;
+
     // Get bill line items
     const [items] = await db.query(
+
       'SELECT * FROM bill_items WHERE bill_id = ?',
       [billId]
     );

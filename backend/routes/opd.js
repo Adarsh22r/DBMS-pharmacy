@@ -37,9 +37,35 @@ router.post('/visit', auth, async (req, res) => {
   }
 });
 
+// @route   GET api/opd/today
+// @desc    Get today's OPD visits for a doctor
+router.get('/today', auth, auth.requireRole('Doctor', 'Admin'), async (req, res) => {
+  const { doctor_id } = req.query;
+  if (!doctor_id) {
+    return res.status(400).json({ message: 'Doctor ID query parameter is required' });
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT v.visit_id, v.patient_id, p.full_name as patient_name,
+              v.visit_date, v.symptoms, v.notes
+       FROM opd_visits v
+       JOIN patients p ON v.patient_id = p.patient_id
+       WHERE v.doctor_id = ? AND DATE(v.visit_date) = CURDATE()
+       ORDER BY v.visit_date DESC`,
+      [doctor_id]
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('OPD today query error:', error);
+    res.status(500).json({ message: 'Server error retrieving today\'s OPD visits' });
+  }
+});
+
 // @route   GET api/opd/visits
 // @desc    Get all OPD visits
 router.get('/visits', auth, async (req, res) => {
+
   try {
     const [rows] = await db.query(
       `SELECT v.visit_id, v.patient_id, p.full_name as patient_name,

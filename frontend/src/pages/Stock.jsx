@@ -36,6 +36,17 @@ const Stock = () => {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalError, setModalError] = useState('');
 
+  const getUniqueMedicines = () => {
+    const map = {};
+    stockList.forEach(item => {
+      if (!map[item.medicine_id]) {
+        map[item.medicine_id] = { ...item, quantity: 0 };
+      }
+      map[item.medicine_id].quantity += item.quantity;
+    });
+    return Object.values(map);
+  };
+
   useEffect(() => {
     fetchStockDetails();
   }, []);
@@ -228,8 +239,9 @@ const Stock = () => {
                 }
 
                 return (
-                  <tr key={m.medicine_id} className="hover:bg-slate-50/50">
-                    <td className="p-4 font-semibold text-slate-800">{m.medicine_name}</td>
+                  <tr key={m.stock_id || m.medicine_id} className="hover:bg-slate-50/50">
+                    <td className="p-4 font-semibold text-slate-800">
+{m.medicine_name}</td>
                     <td className="p-4 text-slate-500">{m.category || 'General'}</td>
                     <td className="p-4 font-mono text-[11px] text-slate-500">{m.batch_number || 'N/A'}</td>
                     <td className="p-4 text-center font-semibold text-slate-700">₹{parseFloat(m.unit_price).toFixed(2)}</td>
@@ -490,11 +502,12 @@ const Stock = () => {
                   className="w-full px-3 py-2 border border-slate-200 bg-white rounded-xl text-xs outline-none focus:border-teal-500"
                 >
                   <option value="">-- Choose Medicine --</option>
-                  {stockList.map(m => (
+                  {getUniqueMedicines().map(m => (
                     <option key={m.medicine_id} value={m.medicine_id}>{m.medicine_name} (Current: {m.quantity})</option>
                   ))}
                 </select>
               </div>
+
 
               {/* Quantity */}
               <div>

@@ -100,7 +100,7 @@ CREATE TABLE medicines (
 -- 8. Stock Table
 CREATE TABLE stock (
     stock_id       INT AUTO_INCREMENT PRIMARY KEY,
-    medicine_id    INT UNIQUE NOT NULL, -- One stock row per medicine
+    medicine_id    INT NOT NULL,
     batch_number   VARCHAR(50) NOT NULL,
     quantity       INT NOT NULL DEFAULT 0,
     expiry_date    DATE NOT NULL,
@@ -110,14 +110,17 @@ CREATE TABLE stock (
 
 -- 9. Stock Log Table (Audit trail)
 CREATE TABLE stock_log (
-    log_id       INT AUTO_INCREMENT PRIMARY KEY,
-    medicine_id  INT NOT NULL,
-    change_type  ENUM('IN','OUT') NOT NULL,
-    quantity     INT NOT NULL,
-    reason       VARCHAR(100),
-    log_time     DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (medicine_id) REFERENCES medicines(medicine_id) ON DELETE CASCADE
+    log_id         INT AUTO_INCREMENT PRIMARY KEY,
+    medicine_id    INT NOT NULL,
+    change_type    ENUM('IN','OUT') NOT NULL,
+    quantity       INT NOT NULL,
+    reason         VARCHAR(100),
+    batch_stock_id INT NULL,
+    log_time       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (medicine_id) REFERENCES medicines(medicine_id) ON DELETE CASCADE,
+    FOREIGN KEY (batch_stock_id) REFERENCES stock(stock_id) ON DELETE SET NULL
 );
+
 
 -- 10. Prescriptions Table
 CREATE TABLE prescriptions (

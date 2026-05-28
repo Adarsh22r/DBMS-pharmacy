@@ -31,6 +31,8 @@ app.use('/api/dispatch', require('./routes/dispatch'));
 app.use('/api/stock', require('./routes/stock'));
 app.use('/api/bills', require('./routes/bills'));
 app.use('/api/reports', require('./routes/reports'));
+app.use('/api/activity', require('./routes/activity'));
+
 
 // Global Error Handler Middleware
 app.use((err, req, res, next) => {

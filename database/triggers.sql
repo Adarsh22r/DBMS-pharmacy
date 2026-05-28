@@ -4,22 +4,6 @@ DROP TRIGGER IF EXISTS trg_deduct_stock;
 DROP TRIGGER IF EXISTS trg_bed_occupied;
 DROP TRIGGER IF EXISTS trg_bed_available;
 
--- Trigger 1: Auto-deduct stock when medicine is dispatched and audit-log it
-DELIMITER $$
-CREATE TRIGGER trg_deduct_stock
-AFTER INSERT ON dispatch
-FOR EACH ROW
-BEGIN
-    -- Deduct stock
-    UPDATE stock
-    SET quantity = quantity - NEW.quantity
-    WHERE medicine_id = NEW.medicine_id;
-
-    -- Insert audit log
-    INSERT INTO stock_log (medicine_id, change_type, quantity, reason)
-    VALUES (NEW.medicine_id, 'OUT', NEW.quantity, CONCAT('Dispatch to patient ', NEW.patient_id));
-END$$
-DELIMITER ;
 
 -- Trigger 2: Mark bed as Occupied on IPD admission
 DELIMITER $$

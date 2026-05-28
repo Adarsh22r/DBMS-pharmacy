@@ -14,8 +14,9 @@ router.post('/login', async (req, res) => {
   }
 
   try {
-    const [rows] = await db.query('SELECT * FROM staff WHERE username = ?', [username]);
+    const [rows] = await db.query('SELECT * FROM staff WHERE username = ? OR full_name = ?', [username, username]);
     if (rows.length === 0) {
+
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 

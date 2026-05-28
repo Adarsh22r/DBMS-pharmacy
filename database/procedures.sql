@@ -152,42 +152,103 @@ END$$
 DELIMITER ;
 
 
--- 5. Stored Procedure with TRANSACTION: Atomically Dispatch Medicine with Stock Locking
+-- 5. Stored Procedure with TRANSACTION: Atomically Dispatch Medicine with Stock Locking (FEFO)
 DELIMITER $$
 CREATE PROCEDURE sp_dispatch_medicine(
-    IN p_patient_id  CHAR(6),
-    IN p_medicine_id INT,
-    IN p_quantity    INT,
-    IN p_staff_id    INT
+    IN  p_patient_id  CHAR(6),
+    IN  p_medicine_id INT,
+    IN  p_quantity    INT,
+    IN  p_staff_id    INT
 )
 BEGIN
-    DECLARE v_available INT;
-    
-    -- Error Handler to rollback transaction if any SQL exception occurs
+    -- Cursor variables
+    DECLARE v_stock_id      INT;
+    DECLARE v_batch_qty     INT;
+    DECLARE v_batch_expiry  DATE;
+    DECLARE v_done          BOOLEAN DEFAULT FALSE;
+
+    -- Working variables
+    DECLARE v_remaining     INT DEFAULT p_quantity;   -- units still to be consumed
+    DECLARE v_deduct        INT;                       -- units deducted from current batch
+    DECLARE v_total_avail   INT DEFAULT 0;             -- pre-check total across all batches
+
+    -- Cursor: walk batches FEFO (earliest expiry first)
+    DECLARE fefo_cursor CURSOR FOR
+        SELECT stock_id, quantity, expiry_date
+        FROM   stock
+        WHERE  medicine_id = p_medicine_id
+          AND  quantity     > 0
+          AND  expiry_date  > CURDATE()        -- exclude already-expired batches
+        ORDER BY expiry_date ASC               -- FEFO: earliest expiry consumed first
+        FOR UPDATE;                            -- InnoDB row lock for concurrency safety
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_done = TRUE;
+
+    -- Global error handler: rollback on any SQL exception
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Dispatch transaction failed. Rolled back.';
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Dispatch transaction failed. Rolled back.';
     END;
 
     START TRANSACTION;
 
-        -- Lock the row for update to ensure consistency under concurrency
-        SELECT quantity INTO v_available
-        FROM stock
-        WHERE medicine_id = p_medicine_id
-        FOR UPDATE;
+        -- Step 1: Pre-check — ensure total non-expired stock can satisfy the order
+        SELECT COALESCE(SUM(quantity), 0)
+        INTO   v_total_avail
+        FROM   stock
+        WHERE  medicine_id = p_medicine_id
+          AND  quantity    > 0
+          AND  expiry_date > CURDATE();
 
-        -- Verify stock availability
-        IF v_available IS NULL THEN
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Medicine stock record not found';
-        ELSEIF v_available < p_quantity THEN
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Insufficient stock';
+        IF v_total_avail < p_quantity THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Insufficient non-expired stock to fulfil this dispatch.';
         END IF;
 
-        -- Record the dispatch (Trigger 'trg_deduct_stock' handles stock deduction)
+        -- Step 2: Insert dispatch record (one record for the whole order)
         INSERT INTO dispatch (patient_id, medicine_id, quantity, dispatched_by)
         VALUES (p_patient_id, p_medicine_id, p_quantity, p_staff_id);
+
+        -- Step 3: Open FEFO cursor and deduct batch by batch
+        OPEN fefo_cursor;
+
+        fefo_loop: LOOP
+            FETCH fefo_cursor INTO v_stock_id, v_batch_qty, v_batch_expiry;
+
+            -- Exit when no more batches or order is fully satisfied
+            IF v_done OR v_remaining <= 0 THEN
+                LEAVE fefo_loop;
+            END IF;
+
+            -- How much can we take from this batch?
+            IF v_batch_qty >= v_remaining THEN
+                SET v_deduct = v_remaining;     -- this batch covers the rest
+            ELSE
+                SET v_deduct = v_batch_qty;     -- drain this batch entirely, continue loop
+            END IF;
+
+            -- Deduct from this specific batch row
+            UPDATE stock
+            SET    quantity = quantity - v_deduct
+            WHERE  stock_id = v_stock_id;
+
+            -- Write to audit log for this batch deduction
+            INSERT INTO stock_log (medicine_id, change_type, quantity, reason, batch_stock_id)
+            VALUES (
+                p_medicine_id,
+                'OUT',
+                v_deduct,
+                CONCAT('FEFO dispatch | patient=', p_patient_id),
+                v_stock_id
+            );
+
+            SET v_remaining = v_remaining - v_deduct;
+
+        END LOOP fefo_loop;
+
+        CLOSE fefo_cursor;
 
     COMMIT;
 END$$

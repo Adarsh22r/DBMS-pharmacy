@@ -14,15 +14,18 @@ import {
 
 const Sidebar = ({ currentPage, setCurrentPage, staff, onLogout }) => {
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'register-patient', label: 'Register Patient', icon: UserPlus },
-    { id: 'patient-lookup', label: 'Patient Lookup', icon: Search },
-    { id: 'bed-management', label: 'Bed Management', icon: BedDouble },
-    { id: 'dispatch', label: 'Medicine Dispatch', icon: FileSpreadsheet },
-    { id: 'stock', label: 'Stock & Inventory', icon: Package },
-    { id: 'billing', label: 'Billing & Invoice', icon: Receipt },
-    { id: 'sales-report', label: 'Sales Reports', icon: TrendingUp },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Admin', 'Doctor', 'Pharmacist', 'Nurse'] },
+    { id: 'register-patient', label: 'Register Patient', icon: UserPlus, roles: ['Admin', 'Nurse'] },
+    { id: 'patient-lookup', label: 'Patient Lookup', icon: Search, roles: ['Admin', 'Doctor', 'Nurse', 'Pharmacist'] },
+    { id: 'bed-management', label: 'Bed Management', icon: BedDouble, roles: ['Admin', 'Nurse'] },
+    { id: 'dispatch', label: 'Medicine Dispatch', icon: FileSpreadsheet, roles: ['Admin', 'Pharmacist'] },
+    { id: 'stock', label: 'Stock & Inventory', icon: Package, roles: ['Admin', 'Pharmacist'] },
+    { id: 'billing', label: 'Billing & Invoice', icon: Receipt, roles: ['Admin'] },
+    { id: 'sales-report', label: 'Sales Reports', icon: TrendingUp, roles: ['Admin'] },
   ];
+
+  const visibleMenuItems = menuItems.filter(item => item.roles.includes(staff?.role));
+
 
   return (
     <aside className="w-64 bg-slate-900 text-white min-h-screen flex flex-col shadow-xl z-20 transition-all-300">
@@ -46,8 +49,9 @@ const Sidebar = ({ currentPage, setCurrentPage, staff, onLogout }) => {
 
       {/* Navigation Items */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const Icon = item.icon;
+
           const isActive = currentPage === item.id;
           return (
             <button

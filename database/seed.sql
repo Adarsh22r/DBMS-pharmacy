@@ -21,9 +21,10 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- 1. Insert Staff (Password: password123, hashed using bcrypt)
 INSERT INTO staff (staff_id, full_name, role, phone, email, username, password) VALUES
 (1, 'System Administrator', 'Admin', '9876543210', 'admin@medicare.com', 'admin', '$2a$10$pmsQcrgoMVXAgcd5ft.wB.G9RdD7QqgJbJbdgbjlid48CpCvdKMba'),
-(2, 'Rahul Sharma', 'Pharmacist', '9876543211', 'rahul@medicare.com', 'pharmacist', '$2a$10$pmsQcrgoMVXAgcd5ft.wB.G9RdD7QqgJbJbdgbjlid48CpCvdKMba'),
-(3, 'Sneha Patel', 'Nurse', '9876543212', 'sneha@medicare.com', 'nurse', '$2a$10$pmsQcrgoMVXAgcd5ft.wB.G9RdD7QqgJbJbdgbjlid48CpCvdKMba'),
-(4, 'Dr. Amit Patel', 'Doctor', '9876543213', 'amit@medicare.com', 'doctor', '$2a$10$pmsQcrgoMVXAgcd5ft.wB.G9RdD7QqgJbJbdgbjlid48CpCvdKMba');
+(2, 'Rahul Sharma', 'Pharmacist', '9876543211', 'rahul@medicare.com', 'rahul', '$2a$10$pmsQcrgoMVXAgcd5ft.wB.G9RdD7QqgJbJbdgbjlid48CpCvdKMba'),
+(3, 'Sneha Patel', 'Nurse', '9876543212', 'sneha@medicare.com', 'sneha', '$2a$10$pmsQcrgoMVXAgcd5ft.wB.G9RdD7QqgJbJbdgbjlid48CpCvdKMba'),
+(4, 'Dr. Amit Patel', 'Doctor', '9876543213', 'amit@medicare.com', 'amit', '$2a$10$pmsQcrgoMVXAgcd5ft.wB.G9RdD7QqgJbJbdgbjlid48CpCvdKMba');
+
 
 -- 2. Insert Doctors
 INSERT INTO doctors (doctor_id, full_name, specialization, phone, email) VALUES

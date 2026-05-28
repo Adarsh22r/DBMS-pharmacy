@@ -11,23 +11,31 @@ Built on **MySQL 9.9**, **Node.js/Express**, and **React (Vite) + Tailwind CSS v
 *   **👨‍⚕️ Inpatient (IPD) & Outpatient (OPD) Workflows**:
     *   Sequential 6-digit Patient IDs auto-assigned on registration.
     *   Patient Lookup page to view historical records, active bed numbers, and prescriptions.
+*   **👥 Role-Based Dashboard Personalization**:
+    *   Conditionally renders different dashboards for **Admin**, **Doctor**, **Pharmacist**, and **Nurse** roles by decoding user role attributes from JWT tokens.
+    *   Gated sidebar navigation hides/shows tabs based on role authorization allowlists.
 *   **🛌 Interactive Bed Management**:
     *   Color-coded bed layout grids (Available, Occupied, Maintenance) mapped across ICU and General Wards.
     *   Trigger-driven bed status transitions (Automatically changes to `'Occupied'` upon admission and `'Available'` upon discharge/billing).
-*   **💊 Atomic Medicine Dispatch Desk**:
-    *   Pharmacists can review active prescriptions and dispatch items.
-    *   Dispenses run via an **InnoDB Stored Transaction** (`sp_dispatch_medicine`) using `FOR UPDATE` lock queries to ensure concurrency safety.
+*   **💊 FEFO (First Expired, First Out) Medicine Dispatch**:
+    *   Runs via an **InnoDB Stored Transaction** (`sp_dispatch_medicine`) using a **cursor loop** to walk through medicine batches ordered by `expiry_date ASC`.
+    *   Ensures earliest-expiring stock batches are consumed first, spilling over into subsequent batches when filling large quantities.
+    *   Utilizes InnoDB `FOR UPDATE` row-level locks for concurrent safety.
 *   **📊 Inventory & Low Stock Alerts**:
-    *   List view of stocks with reorder indicators.
+    *   List view of stocks with reorder indicators mapped across different batches.
     *   Cursor-driven procedure (`sp_low_stock_report`) generating real-time replenishment alerts.
-    *   Audit trail logs capturing intake and dispatch events.
+    *   Audit trail logs capturing intake and dispatch events referencing specific batches.
 *   **🧾 Point-of-Sale Billing & jsPDF Invoice Generator**:
     *   Compiles dispatches made today with consultation fees.
     *   Supports dynamic discount policies (e.g. Senior Citizen, Hospital Staff, Insurance).
     *   Generates a print-ready PDF invoice with hospital branding, customer contact details, itemized totals, and a verified "Paid" stamp.
+*   **💬 WhatsApp Discharge Summary Sharing**:
+    *   Point-of-Sale Billing page provides a "Send via WhatsApp" button that automatically parses invoice, doctor, and patient metadata.
+    *   Launches a pre-filled, beautifully formatted structured text summary using WhatsApp's official deep-link API.
 *   **📈 Sales Analytics**:
     *   Month/Year calendar analytics selector.
     *   Visual charts (Recharts Bar & Pie charts) highlighting top-selling medicines and category-wise revenue shares.
+
 
 ---
 
@@ -143,12 +151,15 @@ Open [http://localhost:5173/](http://localhost:5173/) on your browser.
 
 ## 🔑 Demo Access Credentials
 
-| User Role | Username | Password |
-| :--- | :--- | :--- |
-| **System Administrator** | `admin` | `password123` |
-| **Pharmacist** | `pharmacist` | `password123` |
-| **Nurse** | `nurse` | `password123` |
-| **Doctor** | `doctor` | `password123` |
+The login system supports logging in using **either** the personalized `username` (e.g. `sneha`) or the user's `Full Name` (e.g. `Sneha Patel`).
+
+| Staff Name | User Role | Username / Login Key | Password |
+| :--- | :--- | :--- | :--- |
+| **System Administrator** | Admin | `admin` or `System Administrator` | `password123` |
+| **Rahul Sharma** | Pharmacist | `rahul` or `Rahul Sharma` | `password123` |
+| **Sneha Patel** | Nurse | `sneha` or `Sneha Patel` | `password123` |
+| **Dr. Amit Patel** | Doctor | `amit` or `Dr. Amit Patel` | `password123` |
+
 
 ---
 

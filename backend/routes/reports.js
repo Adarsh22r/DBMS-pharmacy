@@ -5,7 +5,7 @@ const auth = require('../middleware/auth');
 
 // @route   GET api/reports/sales
 // @desc    Get monthly sales report by calling sp_sales_report
-router.get('/sales', auth, async (req, res) => {
+router.get('/sales', auth, auth.requireRole('Admin'), async (req, res) => {
   const year = req.query.year ? parseInt(req.query.year, 10) : new Date().getFullYear();
   const month = req.query.month ? parseInt(req.query.month, 10) : (new Date().getMonth() + 1);
 
@@ -18,9 +18,47 @@ router.get('/sales', auth, async (req, res) => {
   }
 });
 
+// @route   GET api/reports/summary
+// @desc    Get today's operations overview
+router.get('/summary', auth, auth.requireRole('Admin'), async (req, res) => {
+  try {
+    // 1. Today's Revenue (sum of final_amount billed today)
+    const [[{ todayRevenue }]] = await db.query(
+      "SELECT IFNULL(SUM(final_amount), 0) as todayRevenue FROM bills WHERE DATE(bill_date) = CURDATE()"
+    );
+
+    // 2. Active IPD Patients count
+    const [[{ activeIpd }]] = await db.query(
+      "SELECT COUNT(*) as activeIpd FROM ipd_admissions WHERE status = 'Admitted'"
+    );
+
+    // 3. OPD Visits today count
+    const [[{ opdToday }]] = await db.query(
+      "SELECT COUNT(*) as opdToday FROM opd_visits WHERE DATE(visit_date) = CURDATE()"
+    );
+
+    // 4. Bed Occupancy Rate
+    const [[{ totalBeds }]] = await db.query("SELECT COUNT(*) as totalBeds FROM beds");
+    const [[{ occupiedBeds }]] = await db.query("SELECT COUNT(*) as occupiedBeds FROM beds WHERE status = 'Occupied'");
+    const bedOccupancy = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
+
+    res.json({
+      todayRevenue,
+      activeIpd,
+      opdToday,
+      bedOccupancy: `${bedOccupancy}%`
+    });
+
+  } catch (error) {
+    console.error('Summary report error:', error);
+    res.status(500).json({ message: 'Server error retrieving summary report' });
+  }
+});
+
 // @route   GET api/reports/dashboard-summary
 // @desc    Get KPI metrics for dashboard cards
-router.get('/dashboard-summary', auth, async (req, res) => {
+router.get('/dashboard-summary', auth, auth.requireRole('Admin'), async (req, res) => {
+
   try {
     // 1. Total IPD Admissions active
     const [[{ activeIpd }]] = await db.query(

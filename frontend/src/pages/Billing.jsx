@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import api from '../utils/api';
 import { generateBillPDF } from '../utils/generatePDF';
-import { Search, Receipt, CreditCard, Percent, FileText, Printer, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { generateWhatsAppLink } from '../utils/whatsapp';
+import { Search, Receipt, CreditCard, Percent, FileText, Printer, AlertTriangle, ShieldCheck, MessageCircle } from 'lucide-react';
+
 
 const Billing = () => {
   const [patientId, setPatientId] = useState('');
@@ -18,10 +20,19 @@ const Billing = () => {
   
   // Previous Bills list
   const [pastBills, setPastBills] = useState([]);
+  const [currentBill, setCurrentBill] = useState(null);
 
   const handlePatientSearch = async (e) => {
     e.preventDefault();
     if (!patientId.trim()) return;
+
+    setLoading(true);
+    setError('');
+    setPatient(null);
+    setPendingDispatches([]);
+    setPastBills([]);
+    setCurrentBill(null);
+
 
     setLoading(true);
     setError('');
@@ -100,12 +111,14 @@ const Billing = () => {
 
       // 4. Trigger PDF Generation & display in new window
       generateBillPDF(fullBill);
+      setCurrentBill(fullBill);
 
       // Refresh list
       const billsRes = await api.get(`/bills/patient/${patient.patient_id}`);
       setPastBills(billsRes.data);
       setPendingDispatches([]); // Clear pending since they are billed
       setDiscountPercent(0);
+
 
     } catch (err) {
       setBillError(err.response?.data?.message || 'Failed to generate billing records');
@@ -258,74 +271,122 @@ const Billing = () => {
         <div className="lg:col-span-5 space-y-6">
           {/* Checkout controls */}
           {patient && (
-            <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-5 animate-scaleUp">
-              <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-3 flex items-center gap-2">
-                <CreditCard size={18} className="text-teal-600" />
-                Checkout Configurations
-              </h3>
-
-              {/* Payment Mode Selector */}
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Payment Mode</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {['Cash', 'Card', 'UPI', 'Insurance'].map(mode => (
+            <div className="space-y-6">
+              {currentBill && (
+                <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-2xl space-y-3 animate-scaleUp text-xs">
+                  <h4 className="font-bold text-emerald-800 text-sm flex items-center gap-2">
+                    <ShieldCheck size={18} className="text-emerald-600 shrink-0" />
+                    Bill Generated! (Bill #{currentBill.bill_id})
+                  </h4>
+                  <p className="text-slate-600">You can download the receipt or send it directly to the patient's WhatsApp.</p>
+                  <div className="flex flex-wrap gap-2 pt-1.5">
                     <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setPaymentMode(mode)}
-                      className={`py-2 px-1 rounded-xl border font-bold text-xs transition-all-300 ${
-                        paymentMode === mode
-                          ? 'bg-teal-50 border-teal-500 text-teal-700'
-                          : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-                      }`}
+                      onClick={() => generateBillPDF(currentBill)}
+                      className="flex items-center gap-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition"
                     >
-                      {mode}
+                      <Receipt size={14} />
+                      Reprint PDF
                     </button>
-                  ))}
+                    <button
+                      onClick={() => {
+                        const url = generateWhatsAppLink({
+                          patient: {
+                            full_name: currentBill.patient_name,
+                            patient_id: currentBill.patient_id,
+                            patient_type: currentBill.patient_type,
+                            phone: currentBill.phone
+                          },
+                          admission: currentBill.patient_type === 'IPD' ? {
+                            bed_number: currentBill.bed_number,
+                            ward_name: currentBill.ward_name,
+                            admission_date: currentBill.bill_date,
+                            discharge_date: currentBill.bill_date,
+                            diagnosis: currentBill.diagnosis || 'General Treatment'
+                          } : null,
+                          doctor: currentBill.doctor || { full_name: 'Attending Doctor', specialization: 'Medical Care' },
+                          bill: currentBill
+                        });
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold px-4 py-2 rounded-xl transition"
+                    >
+                      <MessageCircle size={14} />
+                      Send via WhatsApp
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Discount Selector */}
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 flex justify-between">
-                  <span>Apply Discount Policy</span>
-                  <span className="text-teal-600 font-bold">{discountPercent}% Off</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-                    <Percent size={14} />
-                  </span>
-                  <select
-                    value={discountPercent}
-                    onChange={(e) => setDiscountPercent(parseInt(e.target.value) || 0)}
-                    className="w-full pl-9 pr-4 py-2 border border-slate-200 bg-white rounded-xl text-xs text-slate-700 outline-none focus:border-teal-500"
-                  >
-                    <option value="0">No Discount</option>
-                    <option value="5">5% Senior Citizen / General Discount</option>
-                    <option value="10">10% Hospital Staff Privilege Discount</option>
-                    <option value="15">15% Medical Insurance Shield Discount</option>
-                    <option value="20">20% Special Clinic Approval Discount</option>
-                  </select>
+              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-5 animate-scaleUp">
+                <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-3 flex items-center gap-2">
+                  <CreditCard size={18} className="text-teal-600" />
+                  Checkout Configurations
+                </h3>
+
+                {/* Payment Mode Selector */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Payment Mode</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['Cash', 'Card', 'UPI', 'Insurance'].map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setPaymentMode(mode)}
+                        className={`py-2 px-1 rounded-xl border font-bold text-xs transition-all-300 ${
+                          paymentMode === mode
+                            ? 'bg-teal-50 border-teal-500 text-teal-700'
+                            : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                        }`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Checkout Trigger */}
-              <button
-                onClick={handleGenerateBill}
-                disabled={billLoading || pendingDispatches.length === 0}
-                className="w-full py-3.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl shadow-lg shadow-teal-700/10 hover:shadow-teal-700/20 transition-all-300 disabled:bg-slate-350 disabled:shadow-none flex items-center justify-center gap-1.5"
-              >
-                {billLoading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <>
-                    <Printer size={16} />
-                    <span>Generate & Print PDF Bill</span>
-                  </>
-                )}
-              </button>
+                {/* Discount Selector */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2 flex justify-between">
+                    <span>Apply Discount Policy</span>
+                    <span className="text-teal-600 font-bold">{discountPercent}% Off</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                      <Percent size={14} />
+                    </span>
+                    <select
+                      value={discountPercent}
+                      onChange={(e) => setDiscountPercent(parseInt(e.target.value) || 0)}
+                      className="w-full pl-9 pr-4 py-2 border border-slate-200 bg-white rounded-xl text-xs text-slate-700 outline-none focus:border-teal-500"
+                    >
+                      <option value="0">No Discount</option>
+                      <option value="5">5% Senior Citizen / General Discount</option>
+                      <option value="10">10% Hospital Staff Privilege Discount</option>
+                      <option value="15">15% Medical Insurance Shield Discount</option>
+                      <option value="20">20% Special Clinic Approval Discount</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Checkout Trigger */}
+                <button
+                  onClick={handleGenerateBill}
+                  disabled={billLoading || pendingDispatches.length === 0}
+                  className="w-full py-3.5 bg-teal-600 hover:bg-teal-700 text-white font-semibold rounded-xl shadow-lg shadow-teal-700/10 hover:shadow-teal-700/20 transition-all-300 disabled:bg-slate-350 disabled:shadow-none flex items-center justify-center gap-1.5"
+                >
+                  {billLoading ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  ) : (
+                    <>
+                      <Printer size={16} />
+                      <span>Generate & Print PDF Bill</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
+
 
           {/* Past Bills list */}
           {patient && (

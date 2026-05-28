@@ -83,20 +83,28 @@ router.put('/discharge/:admission_id', auth, async (req, res) => {
 });
 
 // @route   GET api/ipd/active
-// @desc    Get all active IPD admissions
+// @desc    Get all active IPD admissions (optional filter by doctor_id)
 router.get('/active', auth, async (req, res) => {
+  const { doctor_id } = req.query;
   try {
-    const [rows] = await db.query(
-      `SELECT a.admission_id, a.patient_id, p.full_name as patient_name, p.phone,
-              b.bed_number, w.ward_name, a.admission_date, a.diagnosis, d.full_name as doctor_name
-       FROM ipd_admissions a
-       JOIN patients p ON a.patient_id = p.patient_id
-       JOIN beds b ON a.bed_id = b.bed_id
-       JOIN wards w ON b.ward_id = w.ward_id
-       JOIN doctors d ON a.attending_doctor = d.doctor_id
-       WHERE a.status = 'Admitted'
-       ORDER BY a.admission_date DESC`
-    );
+    let sql = `
+      SELECT a.admission_id, a.patient_id, p.full_name as patient_name, p.phone,
+             b.bed_number, w.ward_name, a.admission_date, a.diagnosis, d.full_name as doctor_name
+      FROM ipd_admissions a
+      JOIN patients p ON a.patient_id = p.patient_id
+      JOIN beds b ON a.bed_id = b.bed_id
+      JOIN wards w ON b.ward_id = w.ward_id
+      JOIN doctors d ON a.attending_doctor = d.doctor_id
+      WHERE a.status = 'Admitted'
+    `;
+    const params = [];
+    if (doctor_id) {
+      sql += ' AND a.attending_doctor = ? ';
+      params.push(doctor_id);
+    }
+    sql += ' ORDER BY a.admission_date DESC';
+
+    const [rows] = await db.query(sql, params);
     res.json(rows);
   } catch (error) {
     console.error(error);
@@ -105,3 +113,4 @@ router.get('/active', auth, async (req, res) => {
 });
 
 module.exports = router;
+
